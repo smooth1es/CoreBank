@@ -41,4 +41,26 @@ public class BankService {
             throw e;
         }
     }
+
+    public BigDecimal calculateTotalBalance(String userId) {
+        return accountRepository.findAll().stream()
+                .filter(account -> account.getUserId().equals(userId))
+                .map(Account::getBalance)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    public List<Account> getTopAccounts(int limit) {
+        return accountRepository.findAll().stream()
+                .sorted((a1, a2) -> a2.getBalance().compareTo(a1.getBalance()))
+                .limit(limit)
+                .toList();
+    }
+
+    public List<Transaction> getTransactionHistory(String accountId) {
+        return transactionHistory.stream()
+                .filter(tx -> tx.fromAccountId().equals(accountId) || tx.toAccountId().equals(accountId))
+                .toList();
+    }
+
+
 }
