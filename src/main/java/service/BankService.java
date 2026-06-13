@@ -9,14 +9,23 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class BankService {
     private final AccountRepository accountRepository;
     private final List<Transaction> transactionHistory = new CopyOnWriteArrayList<>();
+    private final ConcurrentMap<String, Lock> locks = new ConcurrentHashMap<>();
 
     public BankService(AccountRepository accountRepository) {
         this.accountRepository = accountRepository;
+    }
+
+    private Lock getLock(String accountId) {
+        return locks.computeIfAbsent(accountId, k -> new ReentrantLock());
     }
 
     public void transfer(String fromAccountId, String toAccountId, BigDecimal amount) {
@@ -26,6 +35,15 @@ public class BankService {
         Account toAccount = accountRepository.findById(toAccountId)
                 .orElseThrow(() -> new AccountNotFoundException("Receiver account Id not found, "
                         + toAccountId));
+        String firstLockId = fromAccountId.compareTo(toAccountId) < 0 ? fromAccountId : toAccountId;
+        String secondLockId = fromAccountId.compareTo(toAccountId) < 0 ? toAccountId : fromAccountId;
+
+        Lock firstLock = getLock(firstLockId);
+        Lock secondLock = getLock(secondLockId);
+
+        firstLock.lock();
+        secondLock.lock();
+
         try {
             fromAccount.withdraw(amount);
             toAccount.deposit(amount);
@@ -39,6 +57,9 @@ public class BankService {
                     amount, LocalDateTime.now(), TransactionStatus.FAILED);
             transactionHistory.add(transaction);
             throw e;
+        } finally {
+            secondLock.unlock();
+            firstLock.unlock();
         }
     }
 
@@ -61,6 +82,4 @@ public class BankService {
                 .filter(tx -> tx.fromAccountId().equals(accountId) || tx.toAccountId().equals(accountId))
                 .toList();
     }
-
-
 }
